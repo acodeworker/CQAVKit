@@ -113,7 +113,7 @@
     status = VTSessionSetProperty(_encodeSession, kVTCompressionPropertyKey_DataRateLimits,limits);
     NSLog(@"CQVideoEncoder-VTSessionSetProperty set DataRateLimits. return status = %d", (int)status);
     //设置关键帧间隔(GOPSize)GOP太大图像会模糊
-    CFNumberRef maxKeyFrameInterval = (__bridge CFNumberRef)@(_config.fps * 2);
+    CFNumberRef maxKeyFrameInterval = (__bridge CFNumberRef)@(_config.fps/2);
     status = VTSessionSetProperty(_encodeSession, kVTCompressionPropertyKey_MaxKeyFrameInterval, maxKeyFrameInterval);
     NSLog(@"CQVideoEncoder-VTSessionSetProperty set MaxKeyFrameInterval. return status = %d", (int)status);
     //设置fps(预期)

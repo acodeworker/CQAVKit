@@ -213,6 +213,11 @@ static const NSString *VideoZoomFactorContext;
     if ([self.captureSession canAddOutput:self.videoDataOutput]) {
         [self.captureSession addOutput:self.videoDataOutput];
     }
+  
+    AVCaptureConnection* connection = [self.videoDataOutput connectionWithMediaType:AVMediaTypeVideo];
+    if (connection.isVideoOrientationSupported) {
+        connection.videoOrientation = AVCaptureVideoOrientationPortrait;
+    }
     [self.captureSession commitConfiguration];
 }
 
@@ -568,6 +573,7 @@ static const NSString *VideoZoomFactorContext;
         BOOL configResult = [self configAudioInput:&configError];
         if (!configResult) return;
     }
+    
     if (!self.audioDataOutput) [self configAudioDataOutput];
     [self startSessionSync];
 }
@@ -613,7 +619,8 @@ static const NSString *VideoZoomFactorContext;
  每当有一个新的视频帧写入时该方法就会被调用，数据会基于视频数据输出的videoSettings属性进行解码或重新编码
  */
 -(void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
-    // 注意，视频/音频通过AV采集，都会走这里，需要对音频/视频做区分
+
+  // 注意，视频/音频通过AV采集，都会走这里，需要对音频/视频做区分
     // 直接判断output 是videoDataOutput/Audio
     if ([captureOutput isKindOfClass:AVCaptureVideoDataOutput.class]) {
         if (self.delegate && [self.delegate respondsToSelector:@selector(captureVideoSampleBuffer:)]) {
