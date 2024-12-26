@@ -573,13 +573,12 @@ static const NSString *VideoZoomFactorContext;
         BOOL configResult = [self configAudioInput:&configError];
         if (!configResult) return;
     }
-    
     if (!self.audioDataOutput) [self configAudioDataOutput];
-    [self startSessionSync];
+    [self startSessionAsync];
 }
 
 - (void)stopCaptureVideoData {
-    [self stopSessionSync];
+    [self stopSessionAsync];
 }
 
 /// 捕捉视频数据

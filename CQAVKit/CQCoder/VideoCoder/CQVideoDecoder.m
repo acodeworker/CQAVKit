@@ -53,6 +53,8 @@
 
 @implementation CQVideoDecoder
 {
+    uint8_t *_vps;
+    long _vpsSize;
     uint8_t *_sps;
     long _spsSize;
     uint8_t *_pps;
@@ -78,11 +80,11 @@
 }
 
 #pragma mark - Public Func
-- (void)videoDecodeWithH264Data:(NSData *)h264Data; {
+- (void)videoDecodeWithH265Data:(NSData *)h265Data{
     dispatch_async(self.decodeQueue, ^{
         // 获取帧二进制数据
-        uint8_t *nalu = (uint8_t *)h264Data.bytes;
-        [self decodeNaluData:nalu withSize:(uint32_t)h264Data.length];
+        uint8_t *nalu = (uint8_t *)h265Data.bytes;
+        [self decodeNaluData:nalu withSize:(uint32_t)h265Data.length];
     });
 }
 
@@ -90,11 +92,8 @@
 #pragma mark - Private Func
 /// 解析NALU数据
 - (void)decodeNaluData:(uint8_t *)naluData withSize:(uint32_t)frameSize {
-    // 数据类型:frame，前四个字节为NALU开始码，00 00 00 01
-    // 第五位标识数据类型，转化十进制，7表示sps，8表示pps，5表示I帧
-    int type = (naluData[4] & 0x1F);
-    
-    // 将NALU的开始码转为4字节大端NALU的长度信息
+    int type = (naluData[4] & 0x7E) >> 1; // H.265的NALU类型值不同，需要修改位掩码和位移
+//    NSLog(@"nalu Type:%d",type);
     uint32_t naluSize = frameSize - 4;
     uint8_t *pNaluSize = (uint8_t *)(&naluSize);
     naluData[0] = *(pNaluSize + 3);
@@ -103,88 +102,65 @@
     naluData[3] = *(pNaluSize);
     CVPixelBufferRef pixelBuffer = NULL;
     
-    /**
-     第一次解析时: 初始化解码器initDecoder
-     判断数据类型，帧数据调用decode:(uint8_t *)frame
-     sps/pps数据，则给成员变量赋值保存
-     */
     switch (type) {
-        case 0x05:
-            // 关键帧
-            if ([self initDecoderSession]) {
-                pixelBuffer = [self decode:naluData withSize:frameSize];
-            }
+        case 32: // VPS
+            _vpsSize = naluSize;
+            _vps = malloc(_vpsSize);
+            memcpy(_vps, &naluData[4], _vpsSize);
             break;
-        case 0x06:
-            // 增强型
-            break;
-        case 0x07:
-            // sps
+        case 33: // SPS
             _spsSize = naluSize;
             _sps = malloc(_spsSize);
-            // 从下标4(也就是第五个元素)开始复制数据
             memcpy(_sps, &naluData[4], _spsSize);
             break;
-        case 0x08:
-            // pps
+        case 34: // PPS
             _ppsSize = naluSize;
             _pps = malloc(_ppsSize);
-            // 从下标4(也就是第五个元素)开始复制数据
             memcpy(_pps, &naluData[4], _ppsSize);
             break;
         default:
-            // 其他帧（1-5）
-            if ([self initDecoderSession]) {
-                pixelBuffer = [self decode:naluData withSize:frameSize];
-            }
+            // 检查是否是视频帧的NALU类型值（48到63）
+//            if (type == 0 && type == 16) {
+                if ([self initDecoderSession]) {
+                    pixelBuffer = [self decode:naluData withSize:frameSize];
+                }
+//            }
             break;
     }
 }
-
 // 拿到SPS\PPS才能拿到CMVideoFormatDescriptionRef，CMVideoFormatDescriptionRef拿到才能初始化解码会话
 /// 初始化解码会话
 - (BOOL)initDecoderSession {
     if (self.decodeSession) return YES;
-    const uint8_t * const parameterSetPointers[2] = {_sps, _pps};
-    const size_t parameterSetSizes[2] = {_spsSize, _ppsSize};
+    
+    // H.265的参数集索引从0开始，0是VPS，1是SPS，2是PPS
+    const uint8_t * const parameterSetPointers[3] = {_vps, _sps, _pps};
+    const size_t parameterSetSizes[3] = {_vpsSize, _spsSize, _ppsSize};
     int naluHeaderLen = 4;  // 大端模式起始位长度
     
-    /**
-     根据sps pps设置解码参数
-     param kCFAllocatorDefault 分配器
-     param 解码参数个数 ，SPS PPS 所以填2
-     param parameterSetPointers 参数集指针(地址)
-     param parameterSetSizes 参数集大小
-     param naluHeaderLen 起始位长度
-     param _decodeDesc 解码器描述
-     return 状态
-     */
-    OSStatus status = CMVideoFormatDescriptionCreateFromH264ParameterSets(kCFAllocatorDefault, 2, parameterSetPointers, parameterSetSizes, naluHeaderLen, &_videoDesc);
-    if (status != noErr) {
-        NSLog(@"CQVideoDecoder-Video Format DecodeSession create H264ParameterSets(sps, pps) failed status= %d", (int)status);
+  /**
+   根据sps pps设置解码参数
+   param kCFAllocatorDefault 分配器
+   param 解码参数个数 ，SPS PPS 所以填2
+   param parameterSetPointers 参数集指针(地址)
+   param parameterSetSizes 参数集大小
+   param naluHeaderLen 起始位长度
+   param _decodeDesc 解码器描述
+   return 状态
+   */
+  OSStatus status = CMVideoFormatDescriptionCreateFromHEVCParameterSets(kCFAllocatorDefault, 3, parameterSetPointers, parameterSetSizes, naluHeaderLen,NULL, &_videoDesc);
+   if (status != noErr) {
+        NSLog(@"CQVideoDecoder-Video Format DecodeSession create HEVCParameterSets(vps, sps, pps) failed status= %d", (int)status);
         return NO;
     }
     
-    /**
-     解码参数:
-    * kCVPixelBufferPixelFormatTypeKey:摄像头的输出数据格式
-     kCVPixelBufferPixelFormatTypeKey，已测可用值为
-        kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange，即420v
-        kCVPixelFormatType_420YpCbCr8BiPlanarFullRange，即420f
-        kCVPixelFormatType_32BGRA，iOS在内部进行YUV至BGRA格式转换
-     YUV420一般用于标清视频，YUV422用于高清视频，这里的限制让人感到意外。但是，在相同条件下，YUV420计算耗时和传输压力比YUV422都小。
-     
-    * kCVPixelBufferWidthKey/kCVPixelBufferHeightKey: 视频源的分辨率 width*height
-     * kCVPixelBufferOpenGLCompatibilityKey : 它允许在 OpenGL 的上下文中直接绘制解码后的图像，而不是从总线和 CPU 之间复制数据。这有时候被称为零拷贝通道，因为在绘制过程中没有解码的图像被拷贝.
-     
-     */
     NSDictionary *destinationPixBufferAttrs =
     @{
-      (id)kCVPixelBufferPixelFormatTypeKey: [NSNumber numberWithInt:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange], //iOS上 nv12(uvuv排布) 而不是nv21（vuvu排布）
-      (id)kCVPixelBufferWidthKey: [NSNumber numberWithInteger:_config.width],
-      (id)kCVPixelBufferHeightKey: [NSNumber numberWithInteger:_config.height],
-      (id)kCVPixelBufferOpenGLCompatibilityKey: [NSNumber numberWithBool:true]
-      };
+        (id)kCVPixelBufferPixelFormatTypeKey: [NSNumber numberWithInt:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange],
+        (id)kCVPixelBufferWidthKey: [NSNumber numberWithInteger:_config.width],
+        (id)kCVPixelBufferHeightKey: [NSNumber numberWithInteger:_config.height],
+        (id)kCVPixelBufferOpenGLCompatibilityKey: [NSNumber numberWithBool:YES]
+    };
     
     // 解码回调设置
     /**
@@ -219,9 +195,7 @@
         return NO;
     }
     
-    // 设置解码会话属性
-    // 实时解码
-    status = VTSessionSetProperty(self.decodeSession, kVTDecompressionPropertyKey_RealTime,kCFBooleanTrue);
+    status = VTSessionSetProperty(self.decodeSession, kVTDecompressionPropertyKey_RealTime, kCFBooleanTrue);
     NSLog(@"CQVideoDncoder-Vidoe hard decodeSession set property RealTime status = %d", (int)status);
     
     return YES;

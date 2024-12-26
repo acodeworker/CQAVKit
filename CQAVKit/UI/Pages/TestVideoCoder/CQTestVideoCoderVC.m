@@ -56,10 +56,10 @@
 - (void)startCaptureAction:(UIButton *)sender {
     if (sender.selected) {
         // 关闭
-        [self.captureManager stopSessionAsync];
+        [self.captureManager stopCaptureVideoData];
     } else {
         // 打开
-        [self.captureManager startSessionAsync];
+        [self.captureManager startCaptureVideoData];
     }
     sender.selected = !sender.isSelected;
 }
@@ -84,7 +84,7 @@
 }
 
 #pragma mark - CQVideoEncoderDelegate
-- (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeWithSps:(NSData *)sps pps:(NSData *)pps {
+- (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeWithSps:(NSData *)sps pps:(NSData *)pps vps:(nonnull NSData *)vps {
     // 写入文件
     if (!self.fileHandle) [self createFileHandler];
     
@@ -92,7 +92,9 @@
     size_t length = sizeof(bytes) - 1;
     NSData *byteHeader = [NSData dataWithBytes:bytes length:length];
     
-//    [self.fileHandle writeData:byteHeader];
+    [self.fileHandle seekToEndOfFile];
+    [self.fileHandle writeData:vps];
+  
     [self.fileHandle seekToEndOfFile];
     [self.fileHandle writeData:sps];
     
@@ -101,11 +103,12 @@
     [self.fileHandle writeData:pps];
     
     // 直接给解码器解码
-    [self.videoDecoder videoDecodeWithH264Data:sps];
-    [self.videoDecoder videoDecodeWithH264Data:pps];
+    [self.videoDecoder videoDecodeWithH265Data:vps];
+    [self.videoDecoder videoDecodeWithH265Data:sps];
+    [self.videoDecoder videoDecodeWithH265Data:pps];
 }
 
-- (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeSuccessWithH264Data:(NSData *)h264Data {
+- (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeSuccessWithH265Data:(NSData *)h265Data {
     // 写入文件
     if (!self.fileHandle) [self createFileHandler];
     
@@ -115,10 +118,10 @@
     
 //    [self.fileHandle writeData:byteHeader];
     [self.fileHandle seekToEndOfFile];
-    [self.fileHandle writeData:h264Data];
+    [self.fileHandle writeData:h265Data];
     
     // 直接给解码器解码
-    [self.videoDecoder videoDecodeWithH264Data:h264Data];
+    [self.videoDecoder videoDecodeWithH265Data:h265Data];
 }
 
 #pragma mark - CQVideoDecoderDelegate
@@ -130,7 +133,7 @@
 #pragma mark - FileHandler
 - (void)createFileHandler {
     // 沙盒路径
-    NSString *filePath = [NSHomeDirectory()stringByAppendingPathComponent:@"/Library/TestVideoCoder4.h264"];
+    NSString *filePath = [NSHomeDirectory()stringByAppendingPathComponent:@"/Library/TestVideoCoder5.h265"];
     NSFileManager *manager = [NSFileManager defaultManager];
     BOOL createFile = NO;
     if ([manager fileExistsAtPath:filePath]) {

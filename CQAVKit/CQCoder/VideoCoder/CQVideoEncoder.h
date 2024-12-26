@@ -26,7 +26,7 @@ NS_ASSUME_NONNULL_BEGIN
  @param sps sps数据
  @param pps pps数据
  */
-- (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeWithSps:(NSData *)sps pps:(NSData *)pps;
+- (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeWithSps:(NSData *)sps pps:(NSData *)pps vps:(NSData*)vps;
 
 @end
 

@@ -18,7 +18,7 @@
         self.width = 480;
         self.height = 640;
         self.fps = 30;
-        self.bitrate = 1920*1080*8*self.fps;
+        self.bitrate = 1920*108*8*self.fps;
     }
     return self;
 }

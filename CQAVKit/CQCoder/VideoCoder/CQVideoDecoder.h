@@ -46,7 +46,7 @@ NS_ASSUME_NONNULL_BEGIN
  视频解码
  @param h264Data h264视频数据
  */
-- (void)videoDecodeWithH264Data:(NSData *)h264Data;
+- (void)videoDecodeWithH265Data:(NSData *)h265Data;
 
 @end
 

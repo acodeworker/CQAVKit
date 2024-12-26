@@ -92,7 +92,7 @@
      参数9： self 桥接过去，因为C语言函数如果想要调用OC方法，需要对象，就把self传过去，
      参数10：compressionSession
      */
-    OSStatus status = VTCompressionSessionCreate(kCFAllocatorDefault, (int32_t)_config.width, (int32_t)_config.height, kCMVideoCodecType_H264, NULL, NULL, NULL, videoEncoderCallBack, (__bridge  void *_Nullable)self, &_encodeSession);
+    OSStatus status = VTCompressionSessionCreate(kCFAllocatorDefault, (int32_t)_config.width, (int32_t)_config.height, kCMVideoCodecType_HEVC, NULL, NULL, NULL, videoEncoderCallBack, (__bridge  void *_Nullable)self, &_encodeSession);
     if (status != noErr) {
         NSLog(@"CQVideoEncoder-VTCompressionSessionCreate create failed. status = %d", (int)status);
         return;
@@ -102,7 +102,7 @@
     status = VTSessionSetProperty(_encodeSession, kVTCompressionPropertyKey_RealTime, kCFBooleanTrue);
     NSLog(@"CQVideoEncoder-VTSessionSetProperty set RealTime. return status = %d", (int)status);
     // 指定编码比特流的配置文件和级别。直播一般使用baseline，抛弃B帧，可减少由B帧带来的延时
-    status = VTSessionSetProperty(_encodeSession, kVTCompressionPropertyKey_ProfileLevel, kVTProfileLevel_H264_Baseline_AutoLevel);
+    status = VTSessionSetProperty(_encodeSession, kVTCompressionPropertyKey_ProfileLevel, kVTProfileLevel_HEVC_Main_AutoLevel);
     NSLog(@"CQVideoEncoder-VTSessionSetProperty set ProfileLevel. return status = %d", (int)status);
     // 设置码率均值(比特率可以高于此。默认比特率为0，表示视频编码器。应该确定压缩数据的大小。注意，比特率设置只在定时时有效)
     CFNumberRef bit = (__bridge CFNumberRef)@(_config.bitrate);
@@ -151,22 +151,28 @@ void videoEncoderCallBack(void *outputCallbackRefCon, void *sourceFrameRefCon, O
     BOOL isKeyFrame = NO;
     CFArrayRef attachArr = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, true);
     isKeyFrame = !CFDictionaryContainsKey(CFArrayGetValueAtIndex(attachArr, 0), kCMSampleAttachmentKey_NotSync);
-    // 获取sps pps数据，只需要获取一次，保存在h264文件头即可
+    // 获取vps sps pps数据，只需要获取一次，保存在h265文件头即可
     if (isKeyFrame && !encoder->_isHasSpsPps) {
         size_t spsSize, spsCount;
         size_t ppsSize, ppsCount;
-        const uint8_t *spsData, *ppsData;
+        const uint8_t *vpsData, *spsData, *ppsData;
         // 获取图像源像素格式
         CMFormatDescriptionRef formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer);
+        // 获取vps
+        OSStatus status1 = CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(formatDesc, 0, &vpsData, &vpsSize, &vpsCount, 0);
         // 获取sps
-        OSStatus status1 = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(formatDesc, 0, &spsData, &spsSize, &spsCount, 0);
+        OSStatus status2 = CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(formatDesc, 1, &spsData, &spsSize, &spsCount, 0);
         // 获取pps
         OSStatus status2 = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(formatDesc, 1, &ppsData, &ppsSize, &ppsCount, 0);
         // 判断sps/pps获取成功
         if (status1 == noErr && status2 == noErr) {
             encoder->_isHasSpsPps = YES;
-            NSLog(@"CQVideoEncoder-videoEncoderCallBack：Get sps、pps success");
+            NSLog(@"CQVideoEncoder-videoEncoderCallBack：Get vps、sps、pps success");
             
+            // vps 转NSData
+            NSMutableData *vps = [NSMutableData dataWithCapacity:4 + vpsSize];
+            [vps appendBytes:startCode length:4];// 注意加入起始位
+            [vps appendBytes:vpsData length:vpsSize];
             // sps 转NSData
             NSMutableData *sps = [NSMutableData dataWithCapacity:4 + spsSize];
             [sps appendBytes:startCode length:4];// 注意加入起始位
@@ -175,15 +181,18 @@ void videoEncoderCallBack(void *outputCallbackRefCon, void *sourceFrameRefCon, O
             NSMutableData *pps = [NSMutableData dataWithCapacity:4 + ppsSize];
             [pps appendBytes:startCode length:4];// 注意加入起始位
             [pps appendBytes:ppsData length:ppsSize];
-            
+        //vps  00000001 40010c01 ffff2160 00000300 b0000003 00000300 ff15c090
+        //sps  00000001 42010121 60000003 00b00000 03000003 00ffa00f 08028162 057b9165 44
+        //pps  00000001 4401c02c bc14c9
+
             dispatch_async(encoder.callBackQueue, ^{
                 // 回调
-                if (encoder.delegate && [encoder.delegate respondsToSelector:@selector(videoEncoder:didEncodeWithSps:pps:)]) {
-                    [encoder.delegate videoEncoder:encoder didEncodeWithSps:sps pps:pps];
+              if (encoder.delegate && [encoder.delegate respondsToSelector:@selector(videoEncoder:didEncodeWithSps:pps:vps:)]) {
+                    [encoder.delegate videoEncoder:encoder didEncodeWithSps:sps pps:pps vps:vps];
                 }
             });
         } else {
-            NSLog(@"CQVideoEncoder-videoEncodeCallback： Get sps/pps failed spsStatus=%d, ppsStatus=%d", (int)status1, (int)status2);
+            NSLog(@"CQVideoEncoder-videoEncodeCallback： Get vps/sps/pps failed vpsStatus=%d, spsStatus=%d, ppsStatus=%d", (int)status1, (int)status2, (int)status3);
         }
     }
     
@@ -193,47 +202,38 @@ void videoEncoderCallBack(void *outputCallbackRefCon, void *sourceFrameRefCon, O
     // 获取blockBuffer sampleBuffer 转CMBlockBufferRef
     CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
     // 获取单个长度 总长度 首地址
-    /**
-     参数1  数据
-     参数2  偏移量0
-     参数3  获取单个数据长度
-     参数4  获取总数据长度
-     参数5  指针指向
-     获取数据块总大小，单个数据大小，数据块首地址，---理解数组
-     */
     OSStatus error = CMBlockBufferGetDataPointer(blockBuffer, 0, &lengthAtOffset, &totalLength, &dataPoint);
     if (error != kCMBlockBufferNoErr) {
         NSLog(@"CQVideoEncoder-videoEncodeCallback: get datapoint failed, status = %d", (int)error);
         return;
     }
     
-    size_t offet = 0;
+    size_t offset = 0;
     // 返回的nalu数据前四个字节不是0001的startcode(不是系统端的0001)，而是大端模式的帧长度length
     const int lengthInfoSize = 4;
     // 循环获取nalu数据 (通过移动下标的方式，循环读取数据)
-    while (offet < totalLength - lengthInfoSize) {
+    while (offset < totalLength - lengthInfoSize) {
         uint32_t naluLength = 0;
         // 获取nalu 数据长度
-        memcpy(&naluLength, dataPoint + offet, lengthInfoSize);
+        memcpy(&naluLength, dataPoint + offset, lengthInfoSize);
         // 大端转系统端
         naluLength = CFSwapInt32BigToHost(naluLength);
         // 获取到编码好的视频数据
         NSMutableData *data = [NSMutableData dataWithCapacity:4 + naluLength];
         [data appendBytes:startCode length:4];
-        [data appendBytes:dataPoint + offet + lengthInfoSize length:naluLength];
+        [data appendBytes:dataPoint + offset + lengthInfoSize length:naluLength];
         
         // 将NALU数据回调到代理中
         dispatch_async(encoder.callBackQueue, ^{
-            if (encoder.delegate && [encoder.delegate respondsToSelector:@selector(videoEncoder:didEncodeSuccessWithH264Data:)]) {
-                [encoder.delegate videoEncoder:encoder didEncodeSuccessWithH264Data:data];
+            if (encoder.delegate && [encoder.delegate respondsToSelector:@selector(videoEncoder:didEncodeSuccessWithH265Data:)]) {
+                [encoder.delegate videoEncoder:encoder didEncodeSuccessWithH265Data:data];
             }
         });
         
         // 移动下标，继续读取下一个数据
-        offet += lengthInfoSize + naluLength;
+        offset += lengthInfoSize + naluLength;
     }
 }
-
 #pragma mark - Lazy Load
 - (dispatch_queue_t)encodeQueue {
     if (!_encodeQueue) {
