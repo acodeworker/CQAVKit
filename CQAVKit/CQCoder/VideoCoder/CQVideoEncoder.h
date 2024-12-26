@@ -17,9 +17,9 @@ NS_ASSUME_NONNULL_BEGIN
 @required
 /**
  当编码完成时
- @param h264Data 编码完成的H264数据
+ @param h265Data 编码完成的H265数据
  */
-- (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeSuccessWithH264Data:(NSData *)h264Data;
+- (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeSuccessWithH265Data:(NSData *)h265Data isKey:(BOOL)isKey;
 
 /**
  当编码工具开始编码时 (该回调只会回调一次)
@@ -32,7 +32,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  视频编码工具
- @discussion 二次封装VideoToolBox编码 h264硬编码器 (编码和回调均在异步队列执行)
+ @discussion 二次封装VideoToolBox编码 h265硬编码器 (编码和回调均在异步队列执行)
  */
 @interface CQVideoEncoder : NSObject
 

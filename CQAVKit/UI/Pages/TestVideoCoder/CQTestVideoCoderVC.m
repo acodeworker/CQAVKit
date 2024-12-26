@@ -86,21 +86,21 @@
 #pragma mark - CQVideoEncoderDelegate
 - (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeWithSps:(NSData *)sps pps:(NSData *)pps vps:(nonnull NSData *)vps {
     // 写入文件
-    if (!self.fileHandle) [self createFileHandler];
-    
-    const char bytes[] = "\x00\x00\x00\x01";
-    size_t length = sizeof(bytes) - 1;
-    NSData *byteHeader = [NSData dataWithBytes:bytes length:length];
-    
-    [self.fileHandle seekToEndOfFile];
-    [self.fileHandle writeData:vps];
-  
-    [self.fileHandle seekToEndOfFile];
-    [self.fileHandle writeData:sps];
-    
-//    [self.fileHandle writeData:byteHeader];
-    [self.fileHandle seekToEndOfFile];
-    [self.fileHandle writeData:pps];
+//    if (!self.fileHandle) [self createFileHandler];
+//    
+//    const char bytes[] = "\x00\x00\x00\x01";
+//    size_t length = sizeof(bytes) - 1;
+//    NSData *byteHeader = [NSData dataWithBytes:bytes length:length];
+//    
+//    [self.fileHandle seekToEndOfFile];
+//    [self.fileHandle writeData:vps];
+//  
+//    [self.fileHandle seekToEndOfFile];
+//    [self.fileHandle writeData:sps];
+//    
+////    [self.fileHandle writeData:byteHeader];
+//    [self.fileHandle seekToEndOfFile];
+//    [self.fileHandle writeData:pps];
     
     // 直接给解码器解码
     [self.videoDecoder videoDecodeWithH265Data:vps];
@@ -108,7 +108,7 @@
     [self.videoDecoder videoDecodeWithH265Data:pps];
 }
 
-- (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeSuccessWithH265Data:(NSData *)h265Data {
+- (void)videoEncoder:(CQVideoEncoder *)videoEncoder didEncodeSuccessWithH265Data:(NSData *)h265Data isKey:(BOOL)isKey {
     // 写入文件
     if (!self.fileHandle) [self createFileHandler];
     

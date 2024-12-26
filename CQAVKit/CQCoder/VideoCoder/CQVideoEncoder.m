@@ -153,6 +153,7 @@ void videoEncoderCallBack(void *outputCallbackRefCon, void *sourceFrameRefCon, O
     isKeyFrame = !CFDictionaryContainsKey(CFArrayGetValueAtIndex(attachArr, 0), kCMSampleAttachmentKey_NotSync);
     // 获取vps sps pps数据，只需要获取一次，保存在h265文件头即可
     if (isKeyFrame && !encoder->_isHasSpsPps) {
+        size_t vpsSize, vpsCount;
         size_t spsSize, spsCount;
         size_t ppsSize, ppsCount;
         const uint8_t *vpsData, *spsData, *ppsData;
@@ -163,7 +164,7 @@ void videoEncoderCallBack(void *outputCallbackRefCon, void *sourceFrameRefCon, O
         // 获取sps
         OSStatus status2 = CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(formatDesc, 1, &spsData, &spsSize, &spsCount, 0);
         // 获取pps
-        OSStatus status2 = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(formatDesc, 1, &ppsData, &ppsSize, &ppsCount, 0);
+        OSStatus status3 = CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(formatDesc, 2, &ppsData, &ppsSize, &ppsCount, 0);
         // 判断sps/pps获取成功
         if (status1 == noErr && status2 == noErr) {
             encoder->_isHasSpsPps = YES;
@@ -225,8 +226,8 @@ void videoEncoderCallBack(void *outputCallbackRefCon, void *sourceFrameRefCon, O
         
         // 将NALU数据回调到代理中
         dispatch_async(encoder.callBackQueue, ^{
-            if (encoder.delegate && [encoder.delegate respondsToSelector:@selector(videoEncoder:didEncodeSuccessWithH265Data:)]) {
-                [encoder.delegate videoEncoder:encoder didEncodeSuccessWithH265Data:data];
+          if (encoder.delegate && [encoder.delegate respondsToSelector:@selector(videoEncoder:didEncodeSuccessWithH265Data:isKey:)]) {
+                [encoder.delegate videoEncoder:encoder didEncodeSuccessWithH265Data:data isKey:isKeyFrame];
             }
         });
         
