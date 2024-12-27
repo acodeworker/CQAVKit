@@ -99,6 +99,9 @@
     }
     // 设置编码器属性
     // 设置实时编码
+    status = VTSessionSetProperty(_encodeSession, kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanFalse);
+    NSLog(@"CQVideoEncoder-kVTCompressionPropertyKey_AllowFrameReordering set RealTime. return status = %d", (int)status);
+
     status = VTSessionSetProperty(_encodeSession, kVTCompressionPropertyKey_RealTime, kCFBooleanTrue);
     NSLog(@"CQVideoEncoder-VTSessionSetProperty set RealTime. return status = %d", (int)status);
     // 指定编码比特流的配置文件和级别。直播一般使用baseline，抛弃B帧，可减少由B帧带来的延时
@@ -147,6 +150,10 @@ void videoEncoderCallBack(void *outputCallbackRefCon, void *sourceFrameRefCon, O
     }
     // 拿到self
     CQVideoEncoder *encoder = (__bridge CQVideoEncoder *)outputCallbackRefCon;
+//    CMTime pst = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+//    CMTime dst = CMSampleBufferGetDecodeTimeStamp(sampleBuffer);
+//    CMTimeShow(dst);
+  
     // 判断是否是关键帧
     BOOL isKeyFrame = NO;
     CFArrayRef attachArr = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, true);
